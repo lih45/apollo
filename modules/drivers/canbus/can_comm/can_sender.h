@@ -31,12 +31,13 @@
 
 #include "gtest/gtest_prod.h"
 
-#include "cyber/common/macros.h"
+#include "modules/common_msgs/basic_msgs/error_code.pb.h"
 
 #include "cyber/common/log.h"
+#include "cyber/common/macros.h"
 #include "cyber/time/time.h"
-#include "modules/common/proto/error_code.pb.h"
 #include "modules/drivers/canbus/can_client/can_client.h"
+#include "modules/drivers/canbus/can_comm/message_manager.h"
 #include "modules/drivers/canbus/can_comm/protocol_data.h"
 
 /**
@@ -93,6 +94,12 @@ class SenderMessage {
   void Update();
 
   /**
+   * @brief Always update the protocol data. But the updating process depends on
+   *        the real type of protocol data which inherites ProtocolData.
+   */
+  void Update_Heartbeat();
+
+  /**
    * @brief Get the CAN frame to send.
    * @return The CAN frame to send.
    */
@@ -147,7 +154,9 @@ class CanSender {
    * @param enable_log whether enable record the send can frame log
    * @return An error code indicating the status of this initialization.
    */
-  common::ErrorCode Init(CanClient *can_client, bool enable_log);
+  common::ErrorCode Init(CanClient *can_client,
+                         MessageManager<SensorType> *pt_manager,
+                         bool enable_log);
 
   /**
    * @brief Add a message with its ID, protocol data.
@@ -160,6 +169,10 @@ class CanSender {
   void AddMessage(uint32_t message_id, ProtocolData<SensorType> *protocol_data,
                   bool init_with_one = false);
 
+  void ClearMessage();
+
+  bool IsMessageClear();
+
   /**
    * @brief Start the CAN sender.
    * @return The error code indicating the status of this action.
@@ -170,6 +183,11 @@ class CanSender {
    * @brief Update the protocol data based the types.
    */
   void Update();
+
+  /*
+   * @brief Update the heartbeat protocol data based the types.
+   */
+  void Update_Heartbeat();
 
   /**
    * @brief Stop the CAN sender.
@@ -195,6 +213,7 @@ class CanSender {
   bool is_running_ = false;
 
   CanClient *can_client_ = nullptr;  // Owned by global canbus.cc
+  MessageManager<SensorType> *pt_manager_ = nullptr;
   std::vector<SenderMessage<SensorType>> send_messages_;
   std::unique_ptr<std::thread> thread_;
   bool enable_log_ = false;
@@ -254,6 +273,18 @@ void SenderMessage<SensorType>::Update() {
 }
 
 template <typename SensorType>
+void SenderMessage<SensorType>::Update_Heartbeat() {
+  if (protocol_data_ == nullptr) {
+    AERROR << "Attention: ProtocolData is nullptr!";
+    return;
+  }
+  protocol_data_->UpdateData_Heartbeat(can_frame_to_update_.data);
+
+  std::lock_guard<std::mutex> lock(mutex_);
+  can_frame_to_send_ = can_frame_to_update_;
+}
+
+template <typename SensorType>
 uint32_t SenderMessage<SensorType>::message_id() const {
   return message_id_;
 }
@@ -272,6 +303,7 @@ int32_t SenderMessage<SensorType>::curr_period() const {
 template <typename SensorType>
 void CanSender<SensorType>::PowerSendThreadFunc() {
   CHECK_NOTNULL(can_client_);
+  CHECK_NOTNULL(pt_manager_);
   sched_param sch;
   sch.sched_priority = 99;
   pthread_setschedparam(pthread_self(), SCHED_FIFO, &sch);
@@ -305,7 +337,13 @@ void CanSender<SensorType>::PowerSendThreadFunc() {
         AERROR << "Send msg failed:" << can_frame.CanFrameString();
       }
       if (enable_log()) {
-        ADEBUG << "send_can_frame#" << can_frame.CanFrameString();
+        AINFO << "send_can_frame#" << can_frame.CanFrameString();
+      }
+      {
+        uint32_t uid = can_frame.id;
+        const uint8_t *data = can_frame.data;
+        uint8_t len = can_frame.len;
+        pt_manager_->ParseSender(uid, data, len);
       }
     }
     delta_period = new_delta_period;
@@ -324,8 +362,9 @@ void CanSender<SensorType>::PowerSendThreadFunc() {
 }
 
 template <typename SensorType>
-common::ErrorCode CanSender<SensorType>::Init(CanClient *can_client,
-                                              bool enable_log) {
+common::ErrorCode CanSender<SensorType>::Init(
+    CanClient *can_client, MessageManager<SensorType> *pt_manager,
+    bool enable_log) {
   if (is_init_) {
     AERROR << "Duplicated Init request.";
     return common::ErrorCode::CANBUS_ERROR;
@@ -336,7 +375,12 @@ common::ErrorCode CanSender<SensorType>::Init(CanClient *can_client,
   }
   is_init_ = true;
   can_client_ = can_client;
+  pt_manager_ = pt_manager;
   enable_log_ = enable_log;
+  if (pt_manager_ == nullptr) {
+    AERROR << "Invalid protocol manager.";
+    return ::apollo::common::ErrorCode::CANBUS_ERROR;
+  }
   return common::ErrorCode::OK;
 }
 
@@ -365,11 +409,32 @@ common::ErrorCode CanSender<SensorType>::Start() {
   return common::ErrorCode::OK;
 }
 
+// cansender -> Update_Heartbeat()
+template <typename SensorType>
+void CanSender<SensorType>::Update_Heartbeat() {
+  for (auto &message : send_messages_) {
+    message.Update_Heartbeat();
+  }
+}
+
 template <typename SensorType>
 void CanSender<SensorType>::Update() {
   for (auto &message : send_messages_) {
     message.Update();
   }
+}
+
+template <typename SensorType>
+void CanSender<SensorType>::ClearMessage() {
+  send_messages_.clear();
+}
+
+template <typename SensorType>
+bool CanSender<SensorType>::IsMessageClear() {
+  if (send_messages_.empty()) {
+    return true;
+  }
+  return false;
 }
 
 template <typename SensorType>

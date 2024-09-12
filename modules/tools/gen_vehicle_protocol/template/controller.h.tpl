@@ -1,5 +1,5 @@
 /******************************************************************************
- * Copyright 2019 The Apollo Authors. All Rights Reserved.
+ * Copyright 2023 The Apollo Authors. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,31 +19,30 @@
 #include <memory>
 #include <thread>
 
-#include "modules/canbus/vehicle/vehicle_controller.h"
-
 #include "modules/canbus/proto/canbus_conf.pb.h"
-#include "modules/canbus/proto/chassis.pb.h"
 #include "modules/canbus/proto/vehicle_parameter.pb.h"
-#include "modules/common/proto/error_code.pb.h"
-#include "modules/control/proto/control_cmd.pb.h"
+#include "modules/common_msgs/basic_msgs/error_code.pb.h"
+#include "modules/common_msgs/chassis_msgs/chassis.pb.h"
+#include "modules/common_msgs/control_msgs/control_cmd.pb.h"
 
+#include "modules/canbus/vehicle/vehicle_controller.h"
 %(control_protocol_include_list)s
 
 namespace apollo {
 namespace canbus {
 namespace %(car_type_lower)s {
 
-class %(car_type_cap)sController final : public VehicleController {
+class %(car_type_cap)sController final : public VehicleController<::apollo::canbus::%(car_type_cap)s> {
  public:
 
-  explicit %(car_type_cap)sController() {};
+  %(car_type_cap)sController() {};
 
   virtual ~%(car_type_cap)sController();
 
   ::apollo::common::ErrorCode Init(
       const VehicleParameter& params,
-      CanSender<::apollo::canbus::ChassisDetail> *const can_sender,
-      MessageManager<::apollo::canbus::ChassisDetail> *const message_manager) override;
+      CanSender<::apollo::canbus::%(car_type_cap)s> *const can_sender,
+      MessageManager<::apollo::canbus::%(car_type_cap)s> *const message_manager) override;
 
   bool Start() override;
 
@@ -57,6 +56,11 @@ class %(car_type_cap)sController final : public VehicleController {
    * @returns a copy of chassis. Use copy here to avoid multi-thread issues.
    */
   Chassis chassis() override;
+
+  /**
+   * @brief add the sender message.
+   */
+  void AddSendMessage() override;
 
  private:
   // main logical function for operation the car enter or exit the auto driving
@@ -82,6 +86,10 @@ class %(car_type_cap)sController final : public VehicleController {
   // acc:-7.0~5.0 unit:m/s^2
   void Acceleration(double acc) override;
 
+  // drive with speed
+  // speed:-xx.0~xx.0 unit:m/s
+  void Speed(double speed);
+
   // steering with old angle speed
   // angle:-99.99~0.00~99.99, unit:, left:+, right:-
   void Steer(double angle) override;
@@ -92,12 +100,20 @@ class %(car_type_cap)sController final : public VehicleController {
   void Steer(double angle, double angle_spd) override;
 
   // set Electrical Park Brake
-  void SetEpbBreak(const ::apollo::control::ControlCommand& command) override;
-  void SetBeam(const ::apollo::control::ControlCommand& command) override;
-  void SetHorn(const ::apollo::control::ControlCommand& command) override;
-  void SetTurningSignal(
-      const ::apollo::control::ControlCommand& command) override;
+  void SetEpbBreak(const control::ControlCommand& command) override;
+  void SetBeam(const common::VehicleSignal& vehicle_signal) override;
+  void SetHorn(const common::VehicleSignal& vehicle_signal) override;
+  void SetTurningSignal(const common::VehicleSignal& vehicle_signal) override;
 
+  // set Chassis Command
+  common::ErrorCode HandleCustomOperation(
+      const external_command::ChassisCommand& command) override;
+
+  // response vid
+  bool VerifyID() override;
+  bool CheckVin();
+  void GetVin();
+  void ResetVin();
   void ResetProtocol();
   bool CheckChassisError();
 

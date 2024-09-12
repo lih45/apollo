@@ -132,6 +132,17 @@ def get_host_environ(repository_ctx, name, default_value = None):
 
     return default_value
 
+def get_crosstool_verbose(repository_ctx):
+    """Returns the environment variable value CROSSTOOL_VERBOSE.
+
+    Args:
+        repository_ctx: The repository context.
+
+    Returns:
+        A string containing value of environment variable CROSSTOOL_VERBOSE.
+    """
+    return get_host_environ(repository_ctx, "CROSSTOOL_VERBOSE", "0")
+
 def get_cpu_value(repository_ctx):
     """Returns the name of the host operating system.
 
@@ -148,7 +159,8 @@ def execute(
         cmdline,
         error_msg = None,
         error_details = None,
-        empty_stdout_fine = False):
+        empty_stdout_fine = False,
+        ignore_error = True):
     """Executes an arbitrary shell command.
 
     Args:
@@ -163,6 +175,7 @@ def execute(
     """
     result = raw_exec(repository_ctx, cmdline)
     if result.stderr or not (empty_stdout_fine or result.stdout):
+      if not ignore_error:
         fail(
             "\n".join([
                 error_msg.strip() if error_msg else "Repository command failed",
@@ -286,6 +299,11 @@ def make_copy_files_rule(repository_ctx, name, srcs, outs):
     cmd = \"""%s \""",
 )""" % (name, "\n".join(outs), " && \\\n".join(cmds))
 
+def get_copy_dir_files(repository_ctx, src_dir, out_dir):
+    outs = read_dir(repository_ctx, src_dir)
+    outs = [('        "%s",' % out.replace(src_dir, out_dir)) for out in outs]
+    return outs 
+
 def make_copy_dir_rule(repository_ctx, name, src_dir, out_dir, exceptions = None):
     """Returns a rule to recursively copy a directory.
     If exceptions is not None, it must be a list of files or directories in
@@ -315,3 +333,32 @@ def make_copy_dir_rule(repository_ctx, name, src_dir, out_dir, exceptions = None
     ],
     cmd = \"""cp -rLf "%s/." "%s/" %s\""",
 )""" % (name, "\n".join(outs), src_dir, out_dir, post_cmd)
+
+def to_list_of_strings(elements):
+    """Convert the list of ["a", "b", "c"] into '"a", "b", "c"'.
+
+    This is to be used to put a list of strings into the bzl file templates
+    so it gets interpreted as list of strings in Starlark.
+
+    Args:
+      elements: list of string elements
+
+    Returns:
+      single string of elements wrapped in quotes separated by a comma."""
+    quoted_strings = ["\"" + element + "\"" for element in elements]
+    return ", ".join(quoted_strings)
+
+def flag_enabled(repository_ctx, flag_name):
+    return get_host_environ(repository_ctx, flag_name) == "1"
+
+def tpl_gpus_path(repository_ctx, filename):
+    return repository_ctx.path(Label("//third_party/gpus/%s.tpl" % filename))
+
+def tpl_gpus(repository_ctx, tpl, substitutions = {}, out = None):
+    if not out:
+        out = tpl.replace(":", "/")
+    repository_ctx.template(
+        out,
+        Label("//third_party/gpus/%s.tpl" % tpl),
+        substitutions,
+    )

@@ -28,8 +28,13 @@ DEFINE_string(localization_config_file,
 
 // features
 DEFINE_bool(enable_gps_imu_interprolate, true, "enable GPU/IMU interprolate");
-DEFINE_bool(enable_map_reference_unify, true,
-            "enable IMU data convert to map reference");
+
+DEFINE_bool(enable_gps_imu_compensate, false,
+            "enable compensate of GPU/IMU timestamp");
+
+DEFINE_int32(gps_imu_compensate_ns_tolerance, 10000000,
+             "tolerance of GPU/IMU timestamp compensator");
+
 DEFINE_bool(enable_watchdog, true, "enable watchdog");
 
 DEFINE_double(gps_time_delay_tolerance, 1.0,
@@ -109,7 +114,7 @@ DEFINE_double(imu_to_ant_offset_uz, 0.0, "Imu ant offset z uncertainty");
 DEFINE_double(imu_rate, 1.0, "");
 DEFINE_bool(if_utm_zone_id_from_folder, true,
             "load utm zone id from local map folder");
-DEFINE_bool(trans_gpstime_to_utctime, true, "");
+DEFINE_bool(trans_gpstime_to_utctime, false, "");
 DEFINE_int32(gnss_mode, 0, "GNSS Mode, 0 for bestgnss pose, 1 for self gnss.");
 DEFINE_bool(imu_coord_rfu, true, "Right/forward/up");
 DEFINE_bool(gnss_only_init, false,

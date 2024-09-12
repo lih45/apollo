@@ -8,6 +8,7 @@ export CYBER_PATH="${APOLLO_ROOT_DIR}/cyber"
 bazel_bin_path="${APOLLO_ROOT_DIR}/bazel-bin"
 mainboard_path="${bazel_bin_path}/cyber/mainboard"
 cyber_tool_path="${bazel_bin_path}/cyber/tools"
+performance_path="${cyber_tool_path}/cyber_performance"
 recorder_path="${cyber_tool_path}/cyber_recorder"
 launch_path="${cyber_tool_path}/cyber_launch"
 channel_path="${cyber_tool_path}/cyber_channel"
@@ -20,13 +21,15 @@ visualizer_path="${bazel_bin_path}/modules/tools/visualizer"
 for entry in "${mainboard_path}" \
     "${recorder_path}" "${monitor_path}"  \
     "${channel_path}" "${node_path}" \
-    "${service_path}" \
+    "${service_path}" "${performance_path}" \
     "${launch_path}" \
     "${visualizer_path}" ; do
     pathprepend "${entry}"
 done
 
 pathprepend ${bazel_bin_path}/cyber/python/internal PYTHONPATH
+pathprepend "${PYTHON_INSTALL_PATH}/lib/python${PYTHON_VERSION}/site-packages" PYTHONPATH
+pathprepend "${PYTHON_INSTALL_PATH}/bin/" PATH
 
 export CYBER_DOMAIN_ID=80
 export CYBER_IP=127.0.0.1
